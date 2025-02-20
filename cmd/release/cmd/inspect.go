@@ -22,30 +22,40 @@ const (
 	ossRegistry = "docker.io"
 )
 
-func archStatus(expected bool, ossInfo, primeInfo reg.Image, platform reg.Platform) string {
-	if !expected {
-		return "-"
-	}
-
-	hasArch := ossInfo.Platforms[platform] && primeInfo.Platforms[platform]
-	if hasArch {
-		return "✓"
-	}
-	return "✗"
-}
-
-func windowsStatus(expected, exists bool) string {
-	if !expected {
-		return "-"
-	}
-	if exists {
-		return "✓"
-	}
-	return "✗"
-}
-
 func formatImageRef(ref name.Reference) string {
 	return ref.Context().RepositoryStr() + ":" + ref.Identifier()
+}
+
+func getStatus(expected, supported bool) string {
+	const (
+		yes     = "✓"
+		no      = "✗"
+		skipped = "-"
+	)
+	if !expected {
+		return skipped
+	}
+	return map[bool]string{true: yes, false: no}[supported]
+}
+
+func getRegistryStatus(img reg.Image, expectsAmd64, expectsArm64 bool) string {
+	const (
+		yes  = "✓"
+		no   = "✗"
+		warn = "!"
+	)
+	if !img.Exists {
+		return no
+	}
+
+	hasAllArch := true
+	if expectsAmd64 {
+		hasAllArch = hasAllArch && img.Platforms[reg.Platform{OS: "linux", Architecture: "amd64"}]
+	}
+	if expectsArm64 {
+		hasAllArch = hasAllArch && img.Platforms[reg.Platform{OS: "linux", Architecture: "arm64"}]
+	}
+	return map[bool]string{true: yes, false: warn}[hasAllArch]
 }
 
 func table(w io.Writer, results []rke2.Image) {
@@ -69,25 +79,17 @@ func table(w io.Writer, results []rke2.Image) {
 	defer tw.Flush()
 
 	fmt.Fprintln(tw, "image\toss\tprime\tsig\tamd64\tarm64\twin")
-	fmt.Fprintln(tw, "-----\t---\t-----\t---\t-----\t-----\t-------")
+	fmt.Fprintln(tw, "-----\t---\t-----\t---\t-----\t-----\t---")
 
 	for _, result := range results {
-		ossStatus := "✗"
-		if result.OSSImage.Exists {
-			ossStatus = "✓"
-		}
-		primeStatus := "✗"
-		if result.PrimeImage.Exists {
-			primeStatus = "✓"
-		}
 		tw.Write([]byte(strings.Join([]string{
 			formatImageRef(result.Reference),
-			ossStatus,
-			primeStatus,
-			"?", // sigstore not implemented
-			archStatus(result.ExpectsLinuxAmd64, result.OSSImage, result.PrimeImage, reg.Platform{OS: "linux", Architecture: "amd64"}),
-			archStatus(result.ExpectsLinuxArm64, result.OSSImage, result.PrimeImage, reg.Platform{OS: "linux", Architecture: "arm64"}),
-			windowsStatus(result.ExpectsWindows, result.OSSImage.Exists && result.PrimeImage.Exists),
+			result.OSSStatus().String(),
+			result.PrimeStatus().String(),
+			result.SigStatus().String(),
+			result.AMD64Status().String(),
+			result.ARM64Status().String(),
+			result.WindowsStatus().String(),
 			"",
 		}, "\t") + "\n"))
 	}
@@ -101,52 +103,14 @@ func csv(w io.Writer, results []rke2.Image) {
 	fmt.Fprintln(w, "image,oss,prime,sig,amd64,arm64,win")
 
 	for _, result := range results {
-		ossStatus := "N"
-		if result.OSSImage.Exists {
-			ossStatus = "Y"
-		}
-		primeStatus := "N"
-		if result.PrimeImage.Exists {
-			primeStatus = "Y"
-		}
-
-		amd64Status := ""
-		if result.ExpectsLinuxAmd64 {
-			if result.OSSImage.Platforms[reg.Platform{OS: "linux", Architecture: "amd64"}] &&
-				result.PrimeImage.Platforms[reg.Platform{OS: "linux", Architecture: "amd64"}] {
-				amd64Status = "Y"
-			} else {
-				amd64Status = "N"
-			}
-		}
-
-		arm64Status := ""
-		if result.ExpectsLinuxArm64 {
-			if result.OSSImage.Platforms[reg.Platform{OS: "linux", Architecture: "arm64"}] &&
-				result.PrimeImage.Platforms[reg.Platform{OS: "linux", Architecture: "arm64"}] {
-				arm64Status = "Y"
-			} else {
-				arm64Status = "N"
-			}
-		}
-
-		winStatus := ""
-		if result.ExpectsWindows {
-			if result.OSSImage.Exists && result.PrimeImage.Exists {
-				winStatus = "Y"
-			} else {
-				winStatus = "N"
-			}
-		}
-
 		values := []string{
 			formatImageRef(result.Reference),
-			ossStatus,
-			primeStatus,
-			"?", // sigstore not implemented
-			amd64Status,
-			arm64Status,
-			winStatus,
+			result.OSSStatus().String(),
+			result.PrimeStatus().String(),
+			result.SigStatus().String(),
+			result.AMD64Status().String(),
+			result.ARM64Status().String(),
+			result.WindowsStatus().String(),
 		}
 		fmt.Fprintln(w, strings.Join(values, ","))
 	}
@@ -156,7 +120,11 @@ var inspectCmd = &cobra.Command{
 	Use:   "inspect [version]",
 	Short: "Inspect release artifacts",
 	Long: `Inspect release artifacts for a given version.
-Currently supports inspecting the image list for published rke2 releases.`,
+Currently supports inspecting the image list for published rke2 releases.
+- Availability in Docker Hub (OSS) and Prime registry
+- Prime image signature status
+- Image availability for linux/amd64, linux/arm64, and windows/amd64
+`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 1 {
 			return errors.New("expected at least one argument: [version]")
