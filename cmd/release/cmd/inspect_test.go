@@ -85,7 +85,7 @@ func TestInspectAndCSVOutput(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	csv(&buf, results)
+	csv(&buf, results, true)
 
 	expectedBytes, err := os.ReadFile("testdata/inspect_test_output.csv")
 	if err != nil {

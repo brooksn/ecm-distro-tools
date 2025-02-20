@@ -26,39 +26,7 @@ func formatImageRef(ref name.Reference) string {
 	return ref.Context().RepositoryStr() + ":" + ref.Identifier()
 }
 
-func getStatus(expected, supported bool) string {
-	const (
-		yes     = "✓"
-		no      = "✗"
-		skipped = "-"
-	)
-	if !expected {
-		return skipped
-	}
-	return map[bool]string{true: yes, false: no}[supported]
-}
-
-func getRegistryStatus(img reg.Image, expectsAmd64, expectsArm64 bool) string {
-	const (
-		yes  = "✓"
-		no   = "✗"
-		warn = "!"
-	)
-	if !img.Exists {
-		return no
-	}
-
-	hasAllArch := true
-	if expectsAmd64 {
-		hasAllArch = hasAllArch && img.Platforms[reg.Platform{OS: "linux", Architecture: "amd64"}]
-	}
-	if expectsArm64 {
-		hasAllArch = hasAllArch && img.Platforms[reg.Platform{OS: "linux", Architecture: "arm64"}]
-	}
-	return map[bool]string{true: yes, false: warn}[hasAllArch]
-}
-
-func table(w io.Writer, results []rke2.Image) {
+func table(w io.Writer, results []rke2.Image, wide bool) {
 	sort.Slice(results, func(i, j int) bool {
 		return formatImageRef(results[i].Reference) < formatImageRef(results[j].Reference)
 	})
@@ -78,39 +46,56 @@ func table(w io.Writer, results []rke2.Image) {
 	tw := tabwriter.NewWriter(w, 0, 8, 2, ' ', 0)
 	defer tw.Flush()
 
-	fmt.Fprintln(tw, "image\toss\tprime\tsig\tamd64\tarm64\twin")
-	fmt.Fprintln(tw, "-----\t---\t-----\t---\t-----\t-----\t---")
+	if wide {
+		fmt.Fprintln(tw, "image\toss\tprime\tsig\tamd64\tarm64\twin")
+		fmt.Fprintln(tw, "-----\t---\t-----\t---\t-----\t-----\t---")
+	} else {
+		fmt.Fprintln(tw, "image\toss\tprime")
+		fmt.Fprintln(tw, "-----\t---\t-----")
+	}
 
 	for _, result := range results {
-		tw.Write([]byte(strings.Join([]string{
+		columns := []string{
 			formatImageRef(result.Reference),
 			result.OSSStatus().String(),
 			result.PrimeStatus().String(),
-			result.SigStatus().String(),
-			result.AMD64Status().String(),
-			result.ARM64Status().String(),
-			result.WindowsStatus().String(),
-			"",
-		}, "\t") + "\n"))
+		}
+		if wide {
+			columns = append(columns,
+				result.SigStatus().String(),
+				result.AMD64Status().String(),
+				result.ARM64Status().String(),
+				result.WindowsStatus().String(),
+			)
+		}
+		tw.Write([]byte(strings.Join(append(columns, ""), "\t") + "\n"))
 	}
 }
 
-func csv(w io.Writer, results []rke2.Image) {
+func csv(w io.Writer, results []rke2.Image, wide bool) {
 	sort.Slice(results, func(i, j int) bool {
 		return formatImageRef(results[i].Reference) < formatImageRef(results[j].Reference)
 	})
 
-	fmt.Fprintln(w, "image,oss,prime,sig,amd64,arm64,win")
+	if wide {
+		fmt.Fprintln(w, "image,oss,prime,sig,amd64,arm64,win")
+	} else {
+		fmt.Fprintln(w, "image,oss,prime")
+	}
 
 	for _, result := range results {
 		values := []string{
 			formatImageRef(result.Reference),
 			result.OSSStatus().String(),
 			result.PrimeStatus().String(),
-			result.SigStatus().String(),
-			result.AMD64Status().String(),
-			result.ARM64Status().String(),
-			result.WindowsStatus().String(),
+		}
+		if wide {
+			values = append(values,
+				result.SigStatus().String(),
+				result.AMD64Status().String(),
+				result.ARM64Status().String(),
+				result.WindowsStatus().String(),
+			)
 		}
 		fmt.Fprintln(w, strings.Join(values, ","))
 	}
@@ -152,11 +137,12 @@ Currently supports inspecting the image list for published rke2 releases.
 		}
 
 		outputFormat, _ := cmd.Flags().GetString("output")
+		wide, _ := cmd.Flags().GetBool("wide")
 		switch outputFormat {
 		case "csv":
-			csv(os.Stdout, results)
+			csv(os.Stdout, results, wide)
 		default:
-			table(os.Stdout, results)
+			table(os.Stdout, results, wide)
 		}
 
 		return nil
@@ -166,4 +152,5 @@ Currently supports inspecting the image list for published rke2 releases.
 func init() {
 	rootCmd.AddCommand(inspectCmd)
 	inspectCmd.Flags().StringP("output", "o", "table", "Output format (table|csv)")
+	inspectCmd.Flags().BoolP("wide", "w", false, "Show all columns including sig, amd64, arm64, and win")
 }
