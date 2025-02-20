@@ -38,11 +38,97 @@ type ReleaseImage struct {
 	ExpectsWindows    bool
 }
 
+type Status int
+
+const (
+	StatusSkipped Status = iota
+	StatusMissing
+	StatusIncomplete
+	StatusComplete
+	StatusUnknown
+)
+
+func (s Status) String() string {
+	return [...]string{"·", "×", "!", "✓", "?"}[s]
+}
+
 // Image contains the manifest info of an image in the oss and prime registries
 type Image struct {
 	ReleaseImage
 	OSSImage   reg.Image
 	PrimeImage reg.Image
+}
+
+func (i *Image) OSSStatus() Status {
+	if !i.OSSImage.Exists {
+		return StatusMissing
+	}
+
+	hasAllArch := true
+	if i.ExpectsLinuxAmd64 {
+		hasAllArch = hasAllArch && i.OSSImage.Platforms[reg.Platform{OS: "linux", Architecture: "amd64"}]
+	}
+	if i.ExpectsLinuxArm64 {
+		hasAllArch = hasAllArch && i.OSSImage.Platforms[reg.Platform{OS: "linux", Architecture: "arm64"}]
+	}
+	if !hasAllArch {
+		return StatusIncomplete
+	}
+	return StatusComplete
+}
+
+func (i *Image) PrimeStatus() Status {
+	if !i.PrimeImage.Exists {
+		return StatusMissing
+	}
+
+	hasAllArch := true
+	if i.ExpectsLinuxAmd64 {
+		hasAllArch = hasAllArch && i.PrimeImage.Platforms[reg.Platform{OS: "linux", Architecture: "amd64"}]
+	}
+	if i.ExpectsLinuxArm64 {
+		hasAllArch = hasAllArch && i.PrimeImage.Platforms[reg.Platform{OS: "linux", Architecture: "arm64"}]
+	}
+	if !hasAllArch {
+		return StatusIncomplete
+	}
+	return StatusComplete
+}
+
+func (i *Image) AMD64Status() Status {
+	if !i.ExpectsLinuxAmd64 {
+		return StatusSkipped
+	}
+	if !i.OSSImage.Platforms[reg.Platform{OS: "linux", Architecture: "amd64"}] ||
+		!i.PrimeImage.Platforms[reg.Platform{OS: "linux", Architecture: "amd64"}] {
+		return StatusMissing
+	}
+	return StatusComplete
+}
+
+func (i *Image) ARM64Status() Status {
+	if !i.ExpectsLinuxArm64 {
+		return StatusSkipped
+	}
+	if !i.OSSImage.Platforms[reg.Platform{OS: "linux", Architecture: "arm64"}] ||
+		!i.PrimeImage.Platforms[reg.Platform{OS: "linux", Architecture: "arm64"}] {
+		return StatusMissing
+	}
+	return StatusComplete
+}
+
+func (i *Image) WindowsStatus() Status {
+	if !i.ExpectsWindows {
+		return StatusSkipped
+	}
+	if !i.OSSImage.Exists || !i.PrimeImage.Exists {
+		return StatusMissing
+	}
+	return StatusComplete
+}
+
+func (i *Image) SigStatus() Status {
+	return StatusUnknown
 }
 
 type ReleaseInspector struct {
