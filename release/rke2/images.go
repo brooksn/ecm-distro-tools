@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/name"
 	reg "github.com/rancher/ecm-distro-tools/registry"
+	"github.com/rancherlabs/slsactl/pkg/verify"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -55,8 +56,13 @@ func (s Status) String() string {
 // Image contains the manifest info of an image in the oss and prime registries
 type Image struct {
 	ReleaseImage
-	OSSImage   reg.Image
-	PrimeImage reg.Image
+	OSSImage         reg.Image
+	PrimeImage       reg.Image
+	PrimeImageSigned bool
+}
+
+func (i *ReleaseImage) String() string {
+	return i.Reference.Context().RepositoryStr() + ":" + i.Reference.Identifier()
 }
 
 func (i *Image) OSSStatus() Status {
@@ -128,7 +134,39 @@ func (i *Image) WindowsStatus() Status {
 }
 
 func (i *Image) SigStatus() Status {
-	return StatusUnknown
+	if !i.PrimeImage.Exists {
+		return StatusSkipped
+	}
+	if i.PrimeImageSigned {
+		return StatusComplete
+	}
+	repos := []string{
+		"rancher/rancher-csp-adapter",
+		"rancher/fleet-agent",
+		"rancher/rke2-runtime",
+		"rancher/rke2-cloud-provider",
+		"rancher/hardened-addon-resizer",
+		"rancher/hardened-calico",
+		"rancher/hardened-cluster-autoscaler",
+		"rancher/hardened-whereabouts",
+		"rancher/hardened-node-feature-discovery",
+		"rancher/hardened-multus-cni",
+		"rancher/hardened-kubernetes",
+		"rancher/hardened-k8s-metrics-server",
+		"rancher/hardened-flannel",
+		"rancher/hardened-etcd",
+		"rancher/hardened-dns-node-cache",
+		"rancher/hardened-coredns",
+		"rancher/hardened-cni-plugins",
+		"rancher/nginx-ingress-controller",
+	}
+	for _, repo := range repos {
+		if strings.Contains(i.Reference.String(), repo) {
+			return StatusIncomplete
+
+		}
+	}
+	return StatusSkipped
 }
 
 type ReleaseInspector struct {
@@ -266,10 +304,18 @@ func (r *ReleaseInspector) checkImages(ctx context.Context, requiredImages map[s
 				primeImage, _ = r.prime.Image(ctx, img.Reference)
 			}
 
+			signed := false
+
+			err = verify.Verify(img.Reference.String())
+			if err != nil {
+				signed = false
+			}
+
 			resultChan <- Image{
-				ReleaseImage: img,
-				OSSImage:     ossImage,
-				PrimeImage:   primeImage,
+				ReleaseImage:     img,
+				OSSImage:         ossImage,
+				PrimeImage:       primeImage,
+				PrimeImageSigned: signed,
 			}
 		}(required)
 	}

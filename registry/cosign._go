@@ -1,0 +1,54 @@
+package registry
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"os"
+	"strings"
+
+	"github.com/google/go-containerregistry/pkg/logs"
+	"github.com/sigstore/cosign/v2/cmd/cosign/cli/options"
+	"github.com/sigstore/cosign/v2/cmd/cosign/cli/verify"
+)
+
+func verifyKeyless(ctx context.Context, image string) error {
+	slog.Info("GHA keyless verification")
+	var certIdentity string
+	var err error
+
+	repo, ref, err := getImageRepoRef(image)
+	if err != nil {
+		return fmt.Errorf("failed to parse image name: %w", err)
+	}
+
+	if mutable, ok := mutableRepo[repo+":"+ref]; ok && mutable {
+		certIdentity, err = getMutableCertIdentity(ctx, image)
+		if err != nil {
+			return err
+		}
+	} else {
+		certIdentity, err = getCertIdentity(image)
+		if err != nil {
+			return err
+		}
+	}
+
+	fmt.Println("identity:", certIdentity)
+
+	v := &verify.VerifyCommand{
+		CertVerifyOptions: options.CertVerifyOptions{
+			CertIdentity:   certIdentity,
+			CertOidcIssuer: "https://token.actions.githubusercontent.com",
+		},
+		CheckClaims:   true,
+		HashAlgorithm: hashAlgo,
+		MaxWorkers:    maxWorkers,
+	}
+
+	if strings.EqualFold(os.Getenv("DEBUG"), "true") {
+		logs.Debug.SetOutput(os.Stderr)
+	}
+
+	return v.Exec(ctx, []string{image})
+}

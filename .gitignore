@@ -10,6 +10,7 @@ _test
 .vagrant/
 tmp/
 dist/
+workspace/
 
 # Architecture specific extensions/prefixes
 *.[568vq]
