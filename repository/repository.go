@@ -33,10 +33,14 @@ const (
 
 // stripBackportTag returns a string with a prefix backport tag removed
 func stripBackportTag(s string) string {
-	if strings.Contains(s, "Release") || strings.Contains(s, "release") && strings.Contains(s, "[") || strings.Contains(s, "]") {
-		s = strings.Split(s, "]")[1]
+	s = strings.TrimSpace(s)
+	if strings.HasPrefix(s, "[") {
+		before, after, found := strings.Cut(s, "]")
+		test := strings.ToLower(before)
+		if found && strings.Contains(test, "release") {
+			s = strings.TrimSpace(after)
+		}
 	}
-	s = strings.Trim(s, " ")
 
 	return s
 }
@@ -391,8 +395,10 @@ func RetrieveChangeLogContents(ctx context.Context, client *github.Client, owner
 			if exists := addedPRs[prs[0].GetNumber()]; exists {
 				continue
 			}
-
-			title := stripBackportTag(strings.TrimSpace(prs[0].GetTitle()))
+			prNumber := prs[0].GetNumber()
+			prTitle := strings.TrimSpace(prs[0].GetTitle())
+			fmt.Println("PR Number: " + fmt.Sprint(prNumber) + " - Title: " + prTitle)
+			title := stripBackportTag(prTitle)
 			body := prs[0].GetBody()
 
 			var releaseNote string

@@ -8,6 +8,10 @@ func TestStripBackportTag(t *testing.T) {
 		want string
 	}{
 		{
+			line: "Update release workflow",
+			want: "Update release workflow",
+		},
+		{
 			line: "[Release-1.24] Some backport",
 			want: "Some backport",
 		},
