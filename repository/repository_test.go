@@ -12,7 +12,7 @@ func TestStripBackportTag(t *testing.T) {
 			want: "Some backport",
 		},
 		{
-			line: " [Release-1.24]  Some backport",
+			line: " [Release-1.24]  Some backport ",
 			want: "Some backport",
 		},
 		{
@@ -22,6 +22,10 @@ func TestStripBackportTag(t *testing.T) {
 		{
 			line: "[release-1.24] Some backport",
 			want: "Some backport",
+		},
+		{
+			line: "Release workflow updated",
+			want: "Release workflow updated",
 		},
 	}
 	for _, tt := range tests {

@@ -33,10 +33,14 @@ const (
 
 // stripBackportTag returns a string with a prefix backport tag removed
 func stripBackportTag(s string) string {
-	if strings.Contains(s, "Release") || strings.Contains(s, "release") && strings.Contains(s, "[") || strings.Contains(s, "]") {
-		s = strings.Split(s, "]")[1]
+	s = strings.TrimSpace(s)
+	if strings.HasPrefix(s, "[") {
+		before, after, found := strings.Cut(s, "]")
+		test := strings.ToLower(before)
+		if found && strings.Contains(test, "release") {
+			s = strings.TrimSpace(after)
+		}
 	}
-	s = strings.Trim(s, " ")
 
 	return s
 }
