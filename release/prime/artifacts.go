@@ -341,10 +341,13 @@ const artifactsIndexTemplate = `{{ define "release-artifacts-index" }}
 		{{ end }}
       </div>
 	  	  <div class="project-k3s project">
-        <h2>k3s</h2>
+        <h2 id="k3s">
+		  <a class="anchor" href="#k3s">#</a>k3s
+		</h2>
         {{ range $i, $version := .K3s.Versions }}
-        <div class="release-{{ $version }} release">
+        <div id="k3s-{{ $version }}" class="release-{{ $version }} release">
           <div class="release-title">
+						<a class="anchor" href="#k3s-{{ $version }}">#</a>
 						<b class="release-title-tag">{{ $version }}</b>
             <button onclick="expand('{{ $version }}')" id="release-{{ $version }}-expand" class="release-title-expand">expand</button>
           </div>
